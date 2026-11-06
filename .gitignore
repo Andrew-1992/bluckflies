@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.log
+src/generated/
+evals/results/
+web-dist/

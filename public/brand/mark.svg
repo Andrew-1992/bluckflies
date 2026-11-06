@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="BluckFlies">
+  <!--
+    BluckFlies mark: a plane flying a circle over Juba. The contrail is thick
+    where the plane has just been and thins away behind it, open ahead of the
+    nose. Plane drawn for BluckFlies (not a stock icon). Colours: brand blue
+    #2457E6 → violet #805AD5; plane navy #111C3F. For the page (always light);
+    favicon.svg is the same mark with a white plane on dark browser tabs.
+  -->
+  <defs>
+    <linearGradient id="bf-trail" x1="6" y1="12" x2="40" y2="42" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2457e6"/>
+      <stop offset="1" stop-color="#805ad5"/>
+    </linearGradient>
+    <mask id="bf-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48">
+      <rect width="48" height="48" fill="#fff"/>
+      <!-- open sky just ahead of the plane's nose: from -50° to +5° -->
+      <path d="M25 25 L50.7 -5.6 L70 -5.6 L70 28.5 L64.8 28.5Z" fill="#000"/>
+    </mask>
+  </defs>
+  <path mask="url(#bf-gap)" fill="url(#bf-trail)" fill-rule="evenodd"
+        d="M25 7a18 18 0 1 1 0 36a18 18 0 1 1 0-36Z M27.4 14.3a12.6 12.6 0 1 1 0 25.2a12.6 12.6 0 1 1 0-25.2Z"/>
+  <path fill="#111c3f" transform="translate(36.2 11.6) rotate(42) scale(1.18)"
+        d="M8.5 0C8.5 .9 7.6 1.3 6.5 1.3H1.5L-3.2 7.8H-5.4L-2.6 1.3H-6.2L-8 3.6H-9.4L-8.3 0-9.4-3.6H-8L-6.2-1.3H-2.6L-5.4-7.8H-3.2L1.5-1.3H6.5C7.6-1.3 8.5-.9 8.5 0Z"/>
+</svg>

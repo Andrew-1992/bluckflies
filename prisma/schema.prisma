@@ -1,0 +1,446 @@
+// BluckFlies data model (Prisma ORM 7, PostgreSQL).
+//
+// Conventions
+// - Snake_case tables/columns via @@map/@map; camelCase in TypeScript.
+// - Money is integer minor units (cents) + ISO currency.
+// - Status columns are Postgres enums; state changes are conditional
+//   UPDATE … WHERE status IN (…) issued by the repositories.
+// - Columns suffixed `Enc` hold AES-256-GCM ciphertext (src/lib/fieldCipher.ts):
+//   passenger identity documents, contact details and chat transcripts.
+// - CHECK constraints that Prisma cannot express live in the migrations
+//   (search for "-- Integrity checks"); Prisma Migrate does not diff them.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  runtime             = "nodejs"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+  previewFeatures     = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SessionChannel {
+  web
+  whatsapp
+  sms
+
+  @@map("session_channel")
+}
+
+model Session {
+  id          String         @id
+  tokenHash   String         @unique @map("token_hash") @db.Char(64)
+  /// Set after phone login (web) or from the verified sender number (WhatsApp/SMS).
+  travellerId String?        @map("traveller_id")
+  channel     SessionChannel @default(web)
+  /// HMAC of "<channel>:<phone>" for WhatsApp/SMS sessions; one session per sender.
+  channelKey  String?        @unique @map("channel_key") @db.Char(64)
+  revokedAt   DateTime?      @map("revoked_at") @db.Timestamptz(3)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt  DateTime       @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+
+  traveller     Traveller?      @relation(fields: [travellerId], references: [id], onDelete: SetNull)
+  offers        Offer[]
+  bookings      Booking[]
+  confirmations Confirmation[]
+  conversation  Conversation?
+  tickets       SupportTicket[]
+  otpChallenges OtpChallenge[]
+
+  @@index([travellerId])
+  @@map("sessions")
+}
+
+/// A traveller account, identified by a verified phone number.
+model Traveller {
+  id          String   @id
+  /// HMAC-SHA256 of the E.164 number (lookup without storing the number in clear).
+  phoneHash   String   @unique @map("phone_hash") @db.Char(64)
+  phoneEnc    String   @map("phone_enc")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastLoginAt DateTime @default(now()) @map("last_login_at") @db.Timestamptz(3)
+
+  sessions Session[]
+  bookings Booking[]
+
+  @@map("travellers")
+}
+
+/// One-time SMS login codes. Only an HMAC of the code is stored.
+enum StaffRole {
+  admin
+  agent
+  partner
+
+  @@map("staff_role")
+}
+
+/// Support desk staff and partner agents. Passwords: scrypt; TOTP secret encrypted.
+model StaffUser {
+  id               String    @id
+  /// Lower-cased login email.
+  email            String    @unique
+  name             String
+  role             StaffRole
+  passwordHash     String    @map("password_hash")
+  totpSecretEnc    String?   @map("totp_secret_enc")
+  totpEnabledAt    DateTime? @map("totp_enabled_at") @db.Timestamptz(3)
+  /// Last accepted TOTP time step, so a code cannot be replayed.
+  totpLastStep     BigInt?   @map("totp_last_step")
+  failedLogins     Int       @default(0) @map("failed_logins")
+  lockedUntil      DateTime? @map("locked_until") @db.Timestamptz(3)
+  disabledAt       DateTime? @map("disabled_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  sessions StaffSession[]
+
+  @@map("staff_users")
+}
+
+model StaffSession {
+  id         String    @id
+  staffId    String    @map("staff_id")
+  tokenHash  String    @unique @map("token_hash") @db.Char(64)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  staff StaffUser @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId])
+  @@index([expiresAt])
+  @@map("staff_sessions")
+}
+
+model OtpChallenge {
+  id         String    @id
+  sessionId  String    @map("session_id")
+  phoneHash  String    @map("phone_hash") @db.Char(64)
+  phoneEnc   String    @map("phone_enc")
+  codeHash   String    @map("code_hash") @db.Char(64)
+  attempts   Int       @default(0)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  /// Rate limiting: recent challenges per phone.
+  @@index([phoneHash, createdAt])
+  @@index([expiresAt])
+  @@map("otp_challenges")
+}
+
+/// Short-lived priced offers returned by searches (a cache, not a record of sale).
+model Offer {
+  id        String   @id
+  sessionId String   @map("session_id")
+  data      Json     @db.JsonB
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([expiresAt])
+  @@map("offers")
+}
+
+enum BookingStatus {
+  held
+  payment_pending
+  ticketing
+  ticketed
+  expired
+  cancelled
+  refund_pending
+  refunded
+
+  @@map("booking_status")
+}
+
+model Booking {
+  id                String        @id
+  pnr               String        @unique @db.Char(6)
+  ownerSessionId    String        @map("owner_session_id")
+  /// The account that owns this booking, so it is visible from any device after login.
+  travellerId       String?       @map("traveller_id")
+  status            BookingStatus
+  /// Snapshot of the priced offer that was sold (immutable after creation).
+  offer             Json          @db.JsonB
+  totalAmountCents  Int           @map("total_amount_cents")
+  currency          String        @db.Char(3)
+  passengersEnc     String        @map("passengers_enc")
+  contactEnc        String        @map("contact_enc")
+  holdExpiresAt     DateTime      @map("hold_expires_at") @db.Timestamptz(3)
+  ticketNumbers     String[]      @default([]) @map("ticket_numbers")
+  supplierReference String        @map("supplier_reference")
+  createdAt         DateTime      @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime      @map("updated_at") @db.Timestamptz(3)
+
+  owner     Session    @relation(fields: [ownerSessionId], references: [id], onDelete: Restrict)
+  traveller Traveller? @relation(fields: [travellerId], references: [id], onDelete: Restrict)
+  payments  Payment[]
+
+  @@index([ownerSessionId])
+  @@index([travellerId])
+  /// Supplier webhooks (e.g. airline schedule changes) look bookings up by order ID.
+  @@index([supplierReference])
+  /// Sweeper: open holds by expiry.
+  @@index([status, holdExpiresAt])
+  @@map("bookings")
+}
+
+enum PaymentMethod {
+  mtn_momo
+  zain_mgurush
+  card
+  bank_transfer
+  cash_office
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  requested
+  succeeded
+  failed
+  cancelled
+  refund_requested
+  refunded
+
+  @@map("payment_status")
+}
+
+model Payment {
+  id                   String        @id
+  /// Insertion order; "latest attempt" must never depend on timestamps.
+  seq                  BigInt        @unique @default(autoincrement())
+  bookingId            String        @map("booking_id")
+  method               PaymentMethod
+  provider             String
+  amountCents          Int           @map("amount_cents")
+  currency             String        @db.Char(3)
+  /// What the payer pays, in minor units of chargeCurrency (SSP for mobile money).
+  chargeAmountMinor    Int           @map("charge_amount_minor")
+  chargeCurrency       String        @map("charge_currency") @db.Char(3)
+  /// Exchange rate locked at request time (null for USD charges).
+  fxPerUsd             Decimal?      @map("fx_per_usd") @db.Decimal(18, 6)
+  fxAsOf               DateTime?     @map("fx_as_of") @db.Timestamptz(3)
+  fxSource             String?       @map("fx_source")
+  fxMarkupBps          Int?          @map("fx_markup_bps")
+  status               PaymentStatus
+  providerReference    String        @unique @map("provider_reference")
+  refundReference      String?       @map("refund_reference")
+  /// When the payment was confirmed / the refund completed (finance reports).
+  paidAt               DateTime?     @map("paid_at") @db.Timestamptz(3)
+  refundedAt           DateTime?     @map("refunded_at") @db.Timestamptz(3)
+  approvalInstructions String        @map("approval_instructions")
+  checkoutUrl          String?       @map("checkout_url")
+  idempotencyKey       String        @unique @map("idempotency_key")
+  createdAt            DateTime      @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime      @map("updated_at") @db.Timestamptz(3)
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+
+  /// At most one open payment request per booking, so two can never both be charged.
+  @@unique([bookingId], where: raw("status = 'requested'"), map: "payments_one_open_request_per_booking")
+  @@index([bookingId, seq])
+  /// Reconciliation: stale payments by status and provider.
+  @@index([status, provider, updatedAt])
+  @@index([method, createdAt])
+  @@map("payments")
+}
+
+enum ConfirmationKind {
+  create_reservation
+  cancel_booking
+
+  @@map("confirmation_kind")
+}
+
+enum ConfirmationStatus {
+  pending
+  confirmed
+  declined
+  expired
+
+  @@map("confirmation_status")
+}
+
+model Confirmation {
+  id         String             @id
+  sessionId  String             @map("session_id")
+  kind       ConfirmationKind
+  summary    String
+  payloadEnc String             @map("payload_enc")
+  expiresAt  DateTime           @map("expires_at") @db.Timestamptz(3)
+  status     ConfirmationStatus
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, status])
+  @@index([expiresAt])
+  @@map("confirmations")
+}
+
+/// Provider webhook/event IDs already applied (dedupe).
+model ProcessedEvent {
+  id          String   @id
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(3)
+
+  @@index([processedAt])
+  @@map("processed_events")
+}
+
+model Conversation {
+  sessionId   String   @id @map("session_id")
+  messagesEnc String   @map("messages_enc")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("conversations")
+}
+
+enum TicketStatus {
+  open
+  in_progress
+  resolved
+
+  @@map("ticket_status")
+}
+
+model SupportTicket {
+  id         String       @id
+  sessionId  String       @map("session_id")
+  reason     String
+  summary    String
+  status     TicketStatus @default(open)
+  /// Staff member handling the ticket (free text until staff accounts exist).
+  assignee   String?
+  /// Booking the request is about, when the traveller owns one.
+  bookingId  String?      @map("booking_id")
+  /// Phone the traveller asked to be called on (encrypted), e.g. for a booking request.
+  contactPhoneEnc String? @map("contact_phone_enc")
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime     @default(now()) @map("updated_at") @db.Timestamptz(3)
+  resolvedAt DateTime?    @map("resolved_at") @db.Timestamptz(3)
+
+  /// Restrict: a session with open support history is never purged by retention.
+  session Session      @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  notes   TicketNote[]
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@map("support_tickets")
+}
+
+model TicketNote {
+  id        String   @id
+  /// Insertion order: notes written in the same millisecond must still list in order.
+  seq       BigInt   @unique @default(autoincrement())
+  ticketId  String   @map("ticket_id")
+  author    String
+  body      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, seq])
+  @@map("support_ticket_notes")
+}
+
+enum NotificationChannel {
+  email
+  sms
+  whatsapp
+
+  @@map("notification_channel")
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  failed
+
+  @@map("notification_status")
+}
+
+/// Outbox: messages are written here first and sent by a background job with
+/// retries, so a provider outage or crash never loses an e-ticket or alert.
+model Notification {
+  id            String              @id
+  /// e.g. "ticket_issued:bkg_…:email"; the same message is never queued twice.
+  dedupeKey     String              @unique @map("dedupe_key")
+  channel       NotificationChannel
+  recipientEnc  String              @map("recipient_enc")
+  subject       String
+  bodyEnc       String              @map("body_enc")
+  status        NotificationStatus  @default(pending)
+  attempts      Int                 @default(0)
+  nextAttemptAt DateTime            @map("next_attempt_at") @db.Timestamptz(3)
+  lastError     String?             @map("last_error")
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  sentAt        DateTime?           @map("sent_at") @db.Timestamptz(3)
+
+  @@index([status, nextAttemptAt])
+  @@map("notifications")
+}
+
+/// Exchange rates entered by operators (history is kept; the newest per currency applies).
+model FxRate {
+  id        BigInt   @id @default(autoincrement())
+  currency  String   @db.Char(3)
+  perUsd    Decimal  @map("per_usd") @db.Decimal(18, 6)
+  asOf      DateTime @map("as_of") @db.Timestamptz(3)
+  source    String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([currency, asOf(sort: Desc)])
+  @@map("fx_rates")
+}
+
+/// Leases so only one instance runs a given background job at a time.
+model JobLease {
+  name       String   @id
+  owner      String
+  leaseUntil DateTime @map("lease_until") @db.Timestamptz(3)
+
+  @@map("job_leases")
+}
+
+/// AI model usage for cost limits and the AI usage report: one row per conversation per Juba day.
+/// No foreign key to sessions: spend history outlives chat retention.
+model AgentUsage {
+  day              DateTime @db.Date
+  sessionId        String   @map("session_id")
+  calls            Int      @default(0)
+  inputTokens      BigInt   @default(0) @map("input_tokens")
+  outputTokens     BigInt   @default(0) @map("output_tokens")
+  cacheWriteTokens BigInt   @default(0) @map("cache_write_tokens")
+  cacheReadTokens  BigInt   @default(0) @map("cache_read_tokens")
+  costMicros       BigInt   @default(0) @map("cost_micros")
+  updatedAt        DateTime @map("updated_at") @db.Timestamptz(3)
+
+  @@id([day, sessionId])
+  @@map("agent_usage")
+}
+
+/// Shared rate-limit counters (fixed windows) so limits hold across servers.
+/// key_hash = SHA-256 of the limit and its key (IP, session or phone): no raw identifiers stored.
+model RateLimit {
+  keyHash String   @id @map("key_hash")
+  count   Int
+  resetAt DateTime @map("reset_at") @db.Timestamptz(3)
+
+  @@index([resetAt])
+  @@map("rate_limits")
+}

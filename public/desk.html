@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <meta name="robots" content="noindex" />
+  <title>BluckFlies support desk</title>
+  <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/brand/favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/desk.css" />
+</head>
+<!-- Staff tool: requests from travellers ("talk to a person", change requests),
+     airline schedule changes and refunds that need a person. Uses the admin API
+     (ADMIN_API_TOKEN). The token is kept only for this browser tab. -->
+<body class="desk">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <span class="brand"><img class="mark" src="/brand/mark.svg" alt="" width="32" height="32" /><span class="wordmark">BluckFlies</span> <span class="ai-badge">Support desk</span></span>
+      <span class="desk-who" id="who"></span>
+      <button type="button" class="btn ghost sm" id="signout" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <main class="desk-main">
+    <form class="card desk-signin" id="signin">
+      <h1>Sign in</h1>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required maxlength="200" />
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required maxlength="200" />
+      <div id="code-row" hidden>
+        <label for="code">6-digit code from your authenticator app</label>
+        <input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" />
+      </div>
+      <button class="btn primary" type="submit">Sign in</button>
+      <p class="note" id="signin-error" role="alert"></p>
+      <button type="button" class="link-btn" id="use-token">Emergency sign-in with the admin token</button>
+    </form>
+
+    <form class="card desk-signin" id="token-signin" hidden>
+      <h1>Emergency sign-in</h1>
+      <p class="note">For setting up the first admin account or if staff sign-in is broken. Every action is recorded under the name you give.</p>
+      <label for="name">Your name</label>
+      <input id="name" autocomplete="name" required minlength="2" maxlength="60" />
+      <label for="token">Admin token (ADMIN_API_TOKEN)</label>
+      <input id="token" type="password" autocomplete="off" required minlength="32" />
+      <button class="btn primary" type="submit">Sign in</button>
+      <p class="note" id="token-error" role="alert"></p>
+      <button type="button" class="link-btn" id="use-account">Back to staff sign-in</button>
+    </form>
+
+    <section class="card desk-signin" id="setup-2fa" hidden aria-labelledby="setup-title">
+      <h1 id="setup-title">Set up two-step login</h1>
+      <p>Install an authenticator app on your phone (Google Authenticator, Microsoft Authenticator or Authy). Choose "add account", "enter a setup key", and type this key:</p>
+      <p class="setup-key" id="setup-key" dir="ltr"></p>
+      <p class="note">Account: <span id="setup-account"></span>. Type: time-based.</p>
+      <form id="setup-form">
+        <label for="setup-code">Then enter the 6-digit code the app shows</label>
+        <input id="setup-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required />
+        <button class="btn primary" type="submit">Turn on two-step login</button>
+      </form>
+      <p class="note" id="setup-error" role="alert"></p>
+    </section>
+
+    <div class="desk-grid" id="desk" hidden>
+      <section class="desk-list" aria-label="Tickets">
+        <div class="desk-filters" role="group" aria-label="Filter by status">
+          <button type="button" data-status="open" aria-pressed="true">Open</button>
+          <button type="button" data-status="in_progress" aria-pressed="false">In progress</button>
+          <button type="button" data-status="resolved" aria-pressed="false">Resolved</button>
+          <button type="button" data-status="" aria-pressed="false">All</button>
+        </div>
+        <div class="desk-tools">
+          <button type="button" class="btn ghost sm" id="import-statement">Import bank statement</button>
+          <button type="button" class="btn ghost sm" id="manage-staff" hidden>Staff</button>
+          <button type="button" class="btn ghost sm" id="reports" hidden>Reports</button>
+          <button type="button" class="btn ghost sm" id="my-account">My account</button>
+        </div>
+        <ul id="tickets" class="desk-tickets"></ul>
+        <p class="note" id="list-status" role="status"></p>
+      </section>
+      <section class="desk-detail" id="detail" aria-live="polite">
+        <p class="note">Choose a ticket.</p>
+      </section>
+    </div>
+  </main>
+  <script src="/desk.js" type="module"></script>
+</body>
+</html>

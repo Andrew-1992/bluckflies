@@ -1,0 +1,23 @@
+# BluckFlies public entry point: HTTPS (automatic certificates), HSTS, and
+# access logs that are deleted after 14 days (the privacy notice says so).
+# Used by deploy/docker-compose.caddy.yml; the app itself listens only inside Docker.
+# With this single proxy in front, keep TRUST_PROXY_HOPS=1.
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	reverse_proxy app:3000
+
+	log {
+		output file /data/logs/access.log {
+			roll_size 50MiB
+			roll_keep 20
+			roll_keep_for 336h
+		}
+	}
+}

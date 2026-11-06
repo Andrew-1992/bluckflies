@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Always light: white is the brand background, even when the device uses dark mode. -->
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>BluckFlies · Flights from Juba by voice or text</title>
+  <meta name="description" content="BluckFlies is an AI travel agent for flights into, out of and within South Sudan, in English and Arabic, by voice or text." />
+  <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/brand/favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <!-- Link previews (WhatsApp, Facebook, X): image URLs must be absolute; the server fills in the site address. -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="BluckFlies" />
+  <meta property="og:title" content="BluckFlies · Flights from Juba by voice or text" />
+  <meta property="og:description" content="Find, hold and pay for flights in English or Arabic. Bank card, bank transfer or cash." />
+  <meta property="og:url" content="%PUBLIC_BASE_URL%/" />
+  <meta property="og:image" content="%PUBLIC_BASE_URL%/brand/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="preload" href="/fonts/ibm-plex-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<!--
+  Designed for travellers who read little: every screen works with pictures,
+  big buttons and sound. Text in [data-t] elements comes from js/i18n.js
+  (English or Arabic); the page switches to right-to-left for Arabic.
+-->
+<body class="landing">
+  <a class="skip" href="#input" data-t="skip">Skip to message box</a>
+
+  <!-- First visit: pick a language. Each choice has a Listen button. -->
+  <div class="lang-picker" id="lang-picker" role="dialog" aria-modal="true" aria-labelledby="lp-title" hidden>
+    <div class="lp-panel">
+      <img class="mark big" src="/brand/mark.svg" alt="" width="96" height="96" />
+      <h1 id="lp-title"><span>Choose your language</span><span lang="ar" dir="rtl">اختر لغتك</span></h1>
+      <div class="lp-options" id="lp-options"></div>
+    </div>
+  </div>
+
+  <div class="app">
+    <header class="topbar" id="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="/" aria-label="BluckFlies">
+          <img class="mark" src="/brand/mark.svg" alt="" width="40" height="40" />
+          <span class="brand-text">
+            <span class="wordmark">BluckFlies</span>
+            <span class="brand-tag" data-t="brandTag">AI travel agent</span>
+          </span>
+        </a>
+        <nav class="nav" data-t-aria="main">
+          <button type="button" class="nav-link" id="tab-chat" aria-pressed="true"><span data-icon="home"></span><span data-t="navHome">Home</span></button>
+          <button type="button" class="nav-link" id="tab-trips" aria-pressed="false"><span data-icon="ticket"></span><span data-t="navTickets">My tickets</span></button>
+          <button type="button" class="nav-link" id="human"><span data-icon="headset"></span><span data-t="navHelp">Help</span></button>
+        </nav>
+        <div class="top-actions">
+          <button type="button" class="lang-pill" id="lang-switch" data-t-aria="langSwitchLabel"><span data-icon="globe"></span><span class="label" data-t="langSwitch">العربية</span></button>
+          <button type="button" class="round-btn" id="sound" aria-pressed="true"><span data-icon="speaker"></span></button>
+          <button type="button" class="speak-btn" id="nav-speak" data-voice data-voice-open><span data-icon="mic"></span><span class="label" data-t="navSpeak">Speak</span></button>
+        </div>
+      </div>
+    </header>
+
+    <div class="views">
+      <div class="workspace" id="workspace">
+        <section class="chat-pane">
+          <main id="chat" class="scroll">
+            <div class="thread" id="thread" aria-live="polite">
+              <div id="hero" class="landing-page">
+                <section class="home" id="home">
+                  <div class="hero">
+                    <span class="pill ai"><span data-icon="sparkle"></span><span data-t="tagline"></span></span>
+                    <h1 id="hero-title" data-t="heroQ">Where do you want to fly?</h1>
+                    <button type="button" class="btn primary huge" id="open-guide"><span data-icon="plane" data-size="24"></span><span data-t="findFlight">Find a flight</span></button>
+                    <p class="or-type" data-t="orType">or type here</p>
+                    <div id="hero-slot"></div>
+                  </div>
+
+                  <ul class="tile-grid" id="tiles"></ul>
+
+                  <section class="block" aria-labelledby="popular-title">
+                    <h2 id="popular-title" class="block-title"><span data-icon="pin"></span><span data-t="popular">Popular places</span></h2>
+                    <ul class="place-grid" id="routes"></ul>
+                  </section>
+
+                  <section class="block" aria-labelledby="towns-title">
+                    <h2 id="towns-title" class="block-title"><span data-icon="pin"></span><span data-t="townsTitle">Towns in South Sudan</span></h2>
+                    <ul class="town-grid" id="towns"></ul>
+                  </section>
+
+                  <ul class="trust">
+                    <li><span class="trust-icon" data-icon="check" data-size="22"></span><span data-t="trust1"></span></li>
+                    <li><span class="trust-icon" data-icon="lock" data-size="22"></span><span data-t="trust2"></span></li>
+                    <li><span class="trust-icon" data-icon="ticket" data-size="22"></span><span data-t="trust3"></span></li>
+                  </ul>
+                  <div class="footer-slot"></div>
+                </section>
+                <section class="guide" id="guide" hidden aria-live="polite"></section>
+              </div>
+            </div>
+          </main>
+
+          <div class="dock" id="dock">
+            <button type="button" class="canvas-toggle" id="canvas-toggle" aria-controls="canvas" aria-expanded="false" hidden></button>
+            <div class="composer-bar" id="composer-bar">
+              <form id="composer" class="composer">
+                <button type="button" class="mic" id="mic" data-voice aria-pressed="false" data-t-aria="tapSpeak"><span data-icon="mic" data-size="24"></span></button>
+                <label for="input" class="sr" data-t="messageLabel">Message BluckFlies</label>
+                <textarea id="input" rows="1" data-t-ph="typePh" autocomplete="off" maxlength="2000" dir="auto"></textarea>
+                <button class="btn primary send flip-rtl" id="send" type="submit" data-t-aria="send"><span data-icon="arrow" data-size="22"></span></button>
+              </form>
+              <p class="voice-hint" id="voice-hint" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+        </section>
+
+        <aside class="canvas" id="canvas" aria-labelledby="canvas-title">
+          <div class="canvas-head">
+            <h2 id="canvas-title" tabindex="-1" data-t="panel">Your trip</h2>
+            <button type="button" class="icon-btn big" id="canvas-close" data-t-aria="close"><span data-icon="close" data-size="22"></span></button>
+          </div>
+          <div class="canvas-tabs" role="tablist">
+            <button type="button" role="tab" id="ct-flights" aria-controls="cp-flights" aria-selected="true"></button>
+            <button type="button" role="tab" id="ct-route" aria-controls="cp-route" aria-selected="false" tabindex="-1"></button>
+            <button type="button" role="tab" id="ct-bookings" aria-controls="cp-bookings" aria-selected="false" tabindex="-1"></button>
+          </div>
+          <div class="canvas-body">
+            <div id="cp-flights" role="tabpanel" aria-labelledby="ct-flights"></div>
+            <div id="cp-route" role="tabpanel" aria-labelledby="ct-route" hidden></div>
+            <div id="cp-bookings" role="tabpanel" aria-labelledby="ct-bookings" hidden></div>
+          </div>
+        </aside>
+      </div>
+
+      <main id="trips" class="trips-view" hidden>
+        <div class="trips-inner">
+          <h2 class="view-title"><span data-icon="ticket" data-size="26"></span><span data-t="ticketsTitle">My tickets</span></h2>
+          <p class="view-sub" data-t="ticketsSub"></p>
+          <div id="account" class="account"></div>
+          <div id="trip-list" class="trip-list"></div>
+          <div class="footer-slot"></div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Phones: big icon menu at the bottom, within thumb reach. -->
+    <nav class="bottom-nav" data-t-aria="main">
+      <button type="button" id="bn-home" aria-pressed="true"><span data-icon="home" data-size="26"></span><span data-t="navHome">Home</span></button>
+      <button type="button" id="bn-speak" class="speak" data-voice data-voice-open><span class="speak-core" data-icon="mic" data-size="30"></span><span data-t="navSpeak">Speak</span></button>
+      <button type="button" id="bn-tickets" aria-pressed="false"><span data-icon="ticket" data-size="26"></span><span data-t="navTickets">My tickets</span></button>
+      <button type="button" id="bn-help"><span data-icon="headset" data-size="26"></span><span data-t="navHelp">Help</span></button>
+    </nav>
+
+    <div class="backdrop" id="backdrop" hidden></div>
+
+    <div class="voice-overlay" id="voice" role="dialog" aria-modal="true" aria-labelledby="voice-title" hidden>
+      <div class="voice-panel">
+        <div class="voice-head">
+          <h2 id="voice-title"><span class="ai-badge">AI</span> <span data-t="voiceTitle">Talk to BluckFlies</span></h2>
+          <button type="button" class="icon-btn big" id="voice-close" data-t-aria="close"><span data-icon="close" data-size="22"></span></button>
+        </div>
+        <div class="voice-langs" role="group" aria-label="Language / اللغة">
+          <button type="button" data-lang="en" aria-pressed="true">English</button>
+          <button type="button" data-lang="ar" aria-pressed="false" lang="ar">العربية</button>
+        </div>
+        <div class="voice-stage">
+          <button type="button" class="orb" id="orb" data-state="idle">
+            <span class="orb-ring" aria-hidden="true"></span>
+            <span class="orb-core" aria-hidden="true" data-icon="mic" data-size="40"></span>
+          </button>
+          <p class="voice-status" id="voice-status" role="status" aria-live="polite"></p>
+          <p class="voice-heard" id="voice-heard" dir="auto"></p>
+          <p class="voice-reply" id="voice-reply" dir="auto"></p>
+          <p class="voice-note" id="voice-note" hidden></p>
+          <button type="button" class="btn primary" id="voice-results" hidden><span data-icon="list" data-size="20"></span><span data-t="viewFlights"></span></button>
+        </div>
+        <p class="voice-privacy" data-t="voicePrivacy"></p>
+      </div>
+    </div>
+  </div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

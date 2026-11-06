@@ -1,0 +1,152 @@
+# BluckFlies: PostgreSQL + one-shot migrations + app.
+#
+#   cp .env.example .env    # fill in secrets (see README "Running with Docker Compose")
+#   docker compose up --build
+#
+# Ports bind to 127.0.0.1 only; put a TLS-terminating reverse proxy in front
+# for anything public.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      BLUCKFLIES_OWNER_PASSWORD: ${BLUCKFLIES_OWNER_PASSWORD:?set BLUCKFLIES_OWNER_PASSWORD in .env}
+      BLUCKFLIES_APP_PASSWORD: ${BLUCKFLIES_APP_PASSWORD:?set BLUCKFLIES_APP_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bluckflies"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://bluckflies_owner:${BLUCKFLIES_OWNER_PASSWORD}@postgres:5432/bluckflies
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runtime
+    # Only what the app needs: it never sees the postgres or owner passwords.
+    # Every app setting is listed (generated from src/config/env.ts; tests/deploy-config.test.ts
+    # fails if one is missing). Blank values mean "not set", exactly as in .env.
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3000"
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-}
+      ORIGIN_SECRET: ${ORIGIN_SECRET:-}
+      AGENT_DEMO: ${AGENT_DEMO:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      AGENT_MAX_TOOL_ITERATIONS: ${AGENT_MAX_TOOL_ITERATIONS:-}
+      AGENT_DAILY_BUDGET_USD: ${AGENT_DAILY_BUDGET_USD:-}
+      AGENT_CONVERSATION_BUDGET_USD: ${AGENT_CONVERSATION_BUDGET_USD:-}
+      AGENT_PRICE_INPUT_PER_MTOK: ${AGENT_PRICE_INPUT_PER_MTOK:-}
+      AGENT_PRICE_OUTPUT_PER_MTOK: ${AGENT_PRICE_OUTPUT_PER_MTOK:-}
+      AGENT_PRICE_CACHE_WRITE_PER_MTOK: ${AGENT_PRICE_CACHE_WRITE_PER_MTOK:-}
+      AGENT_PRICE_CACHE_READ_PER_MTOK: ${AGENT_PRICE_CACHE_READ_PER_MTOK:-}
+      DATABASE_URL: postgresql://bluckflies_app:${BLUCKFLIES_APP_PASSWORD}@postgres:5432/bluckflies
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-}
+      DATA_ENCRYPTION_KEYS: ${DATA_ENCRYPTION_KEYS:?set DATA_ENCRYPTION_KEYS in .env}
+      JOBS_ENABLED: ${JOBS_ENABLED:-}
+      DATA_RETENTION_DAYS: ${DATA_RETENTION_DAYS:-}
+      RECONCILE_AFTER_MINUTES: ${RECONCILE_AFTER_MINUTES:-}
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:?set PAYMENT_WEBHOOK_SECRET in .env}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      DPO_COMPANY_TOKEN: ${DPO_COMPANY_TOKEN:-}
+      DPO_SERVICE_TYPE: ${DPO_SERVICE_TYPE:-}
+      DPO_API_URL: ${DPO_API_URL:-}
+      DPO_AUTO_REFUNDS: ${DPO_AUTO_REFUNDS:-}
+      CARD_PROVIDER: ${CARD_PROVIDER:-}
+      BANK_NAME: ${BANK_NAME:-}
+      BANK_ACCOUNT_NAME: ${BANK_ACCOUNT_NAME:-}
+      BANK_ACCOUNT_NUMBER: ${BANK_ACCOUNT_NUMBER:-}
+      BANK_BRANCH: ${BANK_BRANCH:-}
+      CASH_OFFICES: ${CASH_OFFICES:-}
+      STAFF_REQUIRE_2FA: ${STAFF_REQUIRE_2FA:-}
+      MANUAL_PAYMENT_MIN_MINUTES: ${MANUAL_PAYMENT_MIN_MINUTES:-}
+      BANK_SWIFT: ${BANK_SWIFT:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
+      FLIGHT_PROVIDER: ${FLIGHT_PROVIDER:-}
+      DUFFEL_ACCESS_TOKEN: ${DUFFEL_ACCESS_TOKEN:-}
+      DUFFEL_API_URL: ${DUFFEL_API_URL:-}
+      DUFFEL_WEBHOOK_SECRET: ${DUFFEL_WEBHOOK_SECRET:-}
+      DUFFEL_AIRLINES: ${DUFFEL_AIRLINES:-}
+      SANDBOX_DOMESTIC_FLIGHTS: ${SANDBOX_DOMESTIC_FLIGHTS:-}
+      SSP_PER_USD: ${SSP_PER_USD:-}
+      SSP_RATE_AS_OF: ${SSP_RATE_AS_OF:-}
+      SSP_RATE_SOURCE: ${SSP_RATE_SOURCE:-}
+      FX_MAX_AGE_HOURS: ${FX_MAX_AGE_HOURS:-}
+      FX_MARKUP_BPS: ${FX_MARKUP_BPS:-}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
+      MOMO_BASE_URL: ${MOMO_BASE_URL:-}
+      MOMO_TARGET_ENVIRONMENT: ${MOMO_TARGET_ENVIRONMENT:-}
+      MOMO_CURRENCY: ${MOMO_CURRENCY:-}
+      MOMO_COLLECTION_SUBSCRIPTION_KEY: ${MOMO_COLLECTION_SUBSCRIPTION_KEY:-}
+      MOMO_COLLECTION_API_USER: ${MOMO_COLLECTION_API_USER:-}
+      MOMO_COLLECTION_API_KEY: ${MOMO_COLLECTION_API_KEY:-}
+      MOMO_DISBURSEMENT_SUBSCRIPTION_KEY: ${MOMO_DISBURSEMENT_SUBSCRIPTION_KEY:-}
+      MOMO_DISBURSEMENT_API_USER: ${MOMO_DISBURSEMENT_API_USER:-}
+      MOMO_DISBURSEMENT_API_KEY: ${MOMO_DISBURSEMENT_API_KEY:-}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
+      SMS_CHANNEL_ENABLED: ${SMS_CHANNEL_ENABLED:-}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_API_VERSION: ${WHATSAPP_API_VERSION:-}
+      WHATSAPP_TEMPLATE_HELD: ${WHATSAPP_TEMPLATE_HELD:-}
+      WHATSAPP_TEMPLATE_TICKETED: ${WHATSAPP_TEMPLATE_TICKETED:-}
+      WHATSAPP_TEMPLATE_REFUNDED: ${WHATSAPP_TEMPLATE_REFUNDED:-}
+      WHATSAPP_TEMPLATE_LANG_EN: ${WHATSAPP_TEMPLATE_LANG_EN:-}
+      WHATSAPP_TEMPLATE_LANG_AR: ${WHATSAPP_TEMPLATE_LANG_AR:-}
+      WHATSAPP_BUSINESS_ACCOUNT_ID: ${WHATSAPP_BUSINESS_ACCOUNT_ID:-}
+      SUPPORT_ALERT_EMAILS: ${SUPPORT_ALERT_EMAILS:-}
+      SUPPORT_ALERT_PHONES: ${SUPPORT_ALERT_PHONES:-}
+      OPS_ALERT_EMAILS: ${OPS_ALERT_EMAILS:-}
+      OPS_ALERT_PHONES: ${OPS_ALERT_PHONES:-}
+      OFFER_TTL_MINUTES: ${OFFER_TTL_MINUTES:-}
+      HOLD_TTL_MINUTES: ${HOLD_TTL_MINUTES:-}
+      LEGAL_COMPANY_NAME: ${LEGAL_COMPANY_NAME:-}
+      LEGAL_COMPANY_ADDRESS: ${LEGAL_COMPANY_ADDRESS:-}
+      LEGAL_COMPANY_REGISTRATION: ${LEGAL_COMPANY_REGISTRATION:-}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
+      SUPPORT_PHONE: ${SUPPORT_PHONE:-}
+      LEGAL_PAGES_APPROVED: ${LEGAL_PAGES_APPROVED:-}
+      ENABLE_SANDBOX_ENDPOINTS: ${ENABLE_SANDBOX_ENDPOINTS:-false}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+    stop_grace_period: 20s
+    # Bounded logs: the app logs no traveller IP addresses, but staff sign-in records do.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  pgdata:
