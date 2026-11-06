@@ -9,7 +9,7 @@ An AI agent for flight search, booking, payment and travel assistance in South S
 
 **Connecting the real services** (Claude, database, email, SMS, MTN MoMo, Stripe, Duffel, WhatsApp): follow [docs/CONNECT.md](docs/CONNECT.md), then run `npm run connect:check` to test every key in `.env` with read-only calls.
 
-**Testing from a PC before going live:** [docs/TUNNEL-TEST.md](docs/TUNNEL-TEST.md) puts the web client on Vercel and runs the server on your PC through an ngrok tunnel, with a scripted demo assistant (`AGENT_DEMO=true`, not AI) until the Anthropic key exists.
+**Testing from a PC before going live:** [docs/TUNNEL-TEST.md](docs/TUNNEL-TEST.md) deploys the web client to Vercel from GitHub and runs the server on your PC through an ngrok tunnel, with a scripted demo assistant (`AGENT_DEMO=true`, not AI) until the Anthropic key exists.
 
 **Going live:** [docs/DEPLOY.md](docs/DEPLOY.md) (server, HTTPS, encrypted backups and restores), [docs/RUNBOOKS.md](docs/RUNBOOKS.md) (daily desk work, payments, refunds, alerts, incidents) and [docs/LAUNCH.md](docs/LAUNCH.md) (the go-live checklist). Draft Terms, Privacy and Refunds pages are served at `/terms`, `/privacy` and `/refunds` from `legal/*.html`, marked as drafts until a lawyer approves them.
 ## Quick start
@@ -22,7 +22,8 @@ npm run dev                 # http://localhost:3000 — in-memory store until DA
 npm run check               # generate + typecheck + tests + build
 npm run eval                # AI quality checks against the real model (needs ANTHROPIC_API_KEY; a few cents)
 npm run launch:check -- https://your-domain   # read-only checks of a live site before taking payments
-npm run build:web -- --api https://<name>.ngrok-free.app   # static web client + vercel.json (docs/TUNNEL-TEST.md)
+npm run build:web -- --api https://<name>.ngrok-free.app   # static web client to upload to Vercel (docs/TUNNEL-TEST.md)
+npm run build:web -- --write-vercel-json                   # regenerate vercel.json (Vercel builds from GitHub)
 ```
 
 Try: *"Juba to Nairobi next Friday, 1 adult"*, then *"book the cheapest"*. The agent collects passenger details and shows a **Confirm** card. After you confirm, ask it to pay:

@@ -10,7 +10,7 @@ import { dateIn, DemoLlmClient, placesIn } from '../src/agent/demoLlm.js';
 import { loadConfig } from '../src/config/env.js';
 import { createApp } from '../src/http/app.js';
 import { SECURITY_HEADERS as SERVER_HEADERS } from '../src/http/middleware.js';
-import { buildWeb, parseArgs, SERVER_PATHS, vercelConfig } from '../src/http/staticSite.js';
+import { buildWeb, gitVercelConfig, parseArgs, ROOT_VERCEL_JSON, SERVER_PATHS, vercelConfig } from '../src/http/staticSite.js';
 import { FixedClock, testContainer } from './helpers.js';
 
 const SECRET = 'origin-secret-for-tests-0123456789abcdef';
@@ -102,6 +102,40 @@ describe('static web build for Vercel', () => {
     expect(cfg.routes.at(-1)).toEqual({ handle: 'filesystem' });
     for (const path of ['/api/chat/stream', '/e/abc', '/terms', '/privacy', '/refunds']) expect(new RegExp(`^${SERVER_PATHS}$`).test(path)).toBe(true);
     for (const path of ['/', '/index.html', '/v/abc/app.js', '/brand/og.png']) expect(new RegExp(`^${SERVER_PATHS}$`).test(path)).toBe(false);
+  });
+
+  it('on Vercel builds from GitHub, takes the server address and site from the environment', () => {
+    expect(parseArgs(['--from-env'], { BLUCKFLIES_API_URL: 'https://abc.ngrok-free.dev', VERCEL_PROJECT_PRODUCTION_URL: 'bf.vercel.app' })).toEqual({
+      mode: 'git',
+      api: 'https://abc.ngrok-free.dev',
+      site: 'https://bf.vercel.app',
+    });
+    expect(() => parseArgs(['--from-env'], {})).toThrow(/Set BLUCKFLIES_API_URL in the Vercel project/);
+    expect(() => parseArgs(['--from-env'], { BLUCKFLIES_API_URL: 'abc.ngrok-free.dev' })).toThrow(/must be an address like/);
+  });
+
+  it('the repository vercel.json is the generated one: static site only, server address from the environment', async () => {
+    const committed = JSON.parse(await readFile(ROOT_VERCEL_JSON, 'utf8')) as Record<string, unknown>;
+    // If this fails after changing staticSite.ts: npm run build:web -- --write-vercel-json, and commit vercel.json.
+    expect(committed).toEqual(JSON.parse(JSON.stringify(gitVercelConfig())));
+    expect(committed['framework']).toBeNull(); // not the Express preset: the server is not deployed to Vercel
+    expect(committed['outputDirectory']).toBe('web-dist');
+    const proxy = (committed['routes'] as Array<Record<string, unknown>>).find((r) => r['src'] === SERVER_PATHS);
+    expect(proxy?.['dest']).toBe('${BLUCKFLIES_API_URL}/$1');
+    expect(proxy?.['env']).toEqual(['BLUCKFLIES_API_URL']);
+    expect(JSON.stringify(committed)).not.toMatch(/ngrok-free\.(app|dev)/); // no tunnel address in the repository
+  });
+
+  it('a GitHub build leaves vercel.json to the repository', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'bf-web-git-'));
+    try {
+      const res = await buildWeb(['--from-env'], out, { BLUCKFLIES_API_URL: 'https://abc.ngrok-free.dev', VERCEL_PROJECT_PRODUCTION_URL: 'bf.vercel.app' });
+      expect(res.mode).toBe('git');
+      await expect(readFile(join(out, 'vercel.json'))).rejects.toThrow();
+      expect(await readFile(join(out, 'index.html'), 'utf8')).toContain('content="https://bf.vercel.app/brand/og.png"');
+    } finally {
+      await rm(out, { recursive: true, force: true });
+    }
   });
 
   it('writes versioned pages, the files under /v/<version>/, and vercel.json', async () => {

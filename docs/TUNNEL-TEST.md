@@ -4,6 +4,8 @@ A temporary setup for showing and testing BluckFlies on real phones before
 the production server and the Anthropic key exist.
 
 ```
+GitHub ──push──▶ Vercel builds web-dist/
+
 phone ──https──▶ Vercel (web pages, icons, fonts)
                     │  /api/…, /e/…, /terms, /privacy, /refunds
                     │  + x-origin-secret header
@@ -11,7 +13,7 @@ phone ──https──▶ Vercel (web pages, icons, fonts)
                  ngrok (free tunnel) ──▶ your PC: npm run dev (port 3000)
 ```
 
-- **Vercel** serves the web client and forwards everything dynamic to your PC.
+- **Vercel** builds the web client from GitHub, serves it, and forwards everything dynamic to your PC.
   The browser only ever talks to Vercel, so there is no CORS and the same
   security headers as the server apply.
 - **ngrok** gives your PC a fixed public address. Your PC refuses any request
@@ -82,41 +84,56 @@ curl.exe https://example-name.ngrok-free.app/healthz                 # {"status"
 curl.exe -X POST https://example-name.ngrok-free.app/api/sessions    # Forbidden: good, only Vercel gets in
 ```
 
-## 4. Vercel (first time)
+## 4. Vercel from GitHub (first time)
 
-1. Create a free account at https://vercel.com/signup.
-2. Build the static site, pointing it at your ngrok address:
-   ```powershell
-   npm run build:web -- --api https://example-name.ngrok-free.app
-   ```
-3. Link it to a new Vercel project, add the secret, and deploy:
-   ```powershell
-   cd web-dist
-   npx vercel login
-   npx vercel link                              # "Set up?" Yes → your account → new project, e.g. bluckflies-test
-   npx vercel env add ORIGIN_SECRET production  # paste the secret (Ctrl+V); answer Yes to "sensitive" if asked
-   npx vercel deploy --prod
-   cd ..
-   ```
-   If Vercel asks about build settings, keep the defaults (no framework, no
-   build command). The project link is saved in `web-dist/.vercel/` and kept by
-   later builds.
-4. Open the address it prints (e.g. `https://bluckflies-test.vercel.app`) on
+Vercel builds the web client from your GitHub repository on every push to
+`main`. The repository's `vercel.json` makes it a plain static site
+(framework "Other", output `web-dist`), so the Express server is never deployed
+to Vercel. The address of your PC and the secret are Vercel environment
+variables, never in the repository.
+
+1. Push the latest code to GitHub (`git add .`, `git commit -m "…"`, `git push`).
+2. Vercel dashboard → **Add New… → Project** → **Import** `Andrew-1992/bluckflies`
+   (first time: **Install** the Vercel GitHub app and allow that repository).
+3. On the configure screen:
+   - **Project name:** e.g. `bluckflies-web`.
+   - **Framework Preset:** leave it; `vercel.json` sets "Other" and the build
+     and output settings (`npm run build:web -- --from-env`, `web-dist`).
+   - **Environment Variables**, add both:
+
+     | Name | Value |
+     |---|---|
+     | `BLUCKFLIES_API_URL` | your ngrok address, e.g. `https://sneak-anteater-tarantula.ngrok-free.dev` (no `/` at the end) |
+     | `ORIGIN_SECRET` | the secret from `.env` (`Select-String ORIGIN_SECRET .env`, the part after `=`) |
+
+4. **Deploy.** The build log ends with `Built web-dist (version …). Server paths go to https://…ngrok-free.dev`.
+5. Open the project's address (e.g. `https://bluckflies-web.vercel.app`) on
    your phone. Type "Juba to Nairobi on 20 November".
 
-**Optional, for link previews and e-ticket links:** put the Vercel address in
-`.env` as `PUBLIC_BASE_URL=https://bluckflies-test.vercel.app`, restart
-`npm run dev`, and rebuild with it:
+**Optional:** put that address in `.env` as `PUBLIC_BASE_URL=https://bluckflies-web.vercel.app`
+and restart `npm run dev`, so e-ticket and payment links point at it.
+(Link previews already use it: the build reads it from Vercel.)
+
+## 5. After a change
+
+- **Web client** (`public/`): `git push`. Vercel rebuilds by itself.
+- **Server** (`src/`): `npm run dev` reloads by itself; nothing to deploy.
+- **Changed `BLUCKFLIES_API_URL` or `ORIGIN_SECRET` in Vercel:** Deployments →
+  latest → **Redeploy**, so it uses the new values.
+- **Changed `src/http/staticSite.ts`** (routes or headers): run
+  `npm run build:web -- --write-vercel-json` and commit `vercel.json` (a test
+  fails until you do).
+
+### Alternative: upload from your PC instead of GitHub
 
 ```powershell
-npm run build:web -- --api https://example-name.ngrok-free.app --site https://bluckflies-test.vercel.app
-cd web-dist; npx vercel deploy --prod; cd ..
+npm run build:web -- --api https://example-name.ngrok-free.app
+cd web-dist
+npx vercel link                              # new project; settings "Other", no build command
+npx vercel env add ORIGIN_SECRET production
+npx vercel deploy --prod
+cd ..
 ```
-
-## 5. After changing the web client
-
-Rebuild and deploy again (step 4.2 and `npx vercel deploy --prod` in
-`web-dist`). Server changes only need `npm run dev` (it reloads by itself).
 
 ## 6. Stop
 
@@ -142,6 +159,8 @@ and deploy again.
 |---|---|
 | Chat says the assistant is not available | `npm run dev` start line says `"agent":"unconfigured"`: `AGENT_DEMO=true` missing from `.env` |
 | Every chat or page error, `curl` to ngrok `/healthz` fails | ngrok or `npm run dev` not running |
-| `/healthz` works but the site's chat fails with 403 | The secret differs: same value in `.env` and Vercel, then `npx vercel deploy --prod` again so Vercel uses the new value |
+| `/healthz` works but the site's chat fails with 403 | The secret differs: same value in `.env` and Vercel, then **Redeploy** in Vercel so it uses the new value |
+| Vercel build fails: "Set BLUCKFLIES_API_URL" | Add it in the project's Settings → Environment Variables, then Redeploy |
+| Vercel build fails: "No entrypoint found which imports express" | The project was created before `vercel.json` was in the repository: push the latest code and Redeploy |
 | ngrok's "You are about to visit" page | You opened the ngrok address directly; use the Vercel address |
-| Old look after a change | Rebuild (`npm run build:web …`) and deploy again |
+| Old look after a change | Check the latest Vercel deployment finished (Deployments tab), then reload the page |
